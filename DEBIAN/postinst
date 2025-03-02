@@ -1,0 +1,12 @@
+#!/bin/sh
+# Set permissions AFTER installation
+echo "Verifying installation..."
+if [ -f /usr/bin/cyruspass ]; then
+    chmod 755 /usr/bin/cyruspass
+else
+    echo "Error: cyruspass not installed!" >&2
+    exit 1
+fi
+
+# Update icon cache (if needed)
+[ -x /usr/bin/gtk-update-icon-cache ] && gtk-update-icon-cache -q /usr/share/icons/hicolor/

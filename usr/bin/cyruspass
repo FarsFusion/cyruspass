@@ -1,0 +1,309 @@
+#!/bin/bash
+# Inspired by Cyrus🦁 the Great.
+
+#############################
+# Check for GUI mode
+#############################
+GUI_MODE=false
+if [ -n "$DISPLAY" ] && [ -z "$PS1" ]; then
+	GUI_MODE=true
+fi
+
+#############################
+# Functions: Usage / Help
+#############################
+usage() {
+	echo -e "Usage: $0 [-t <type>] [-l <length>] [-c <custom_chars>]"
+	echo -e "  -t, --type       Password type (number 1-8):"
+	echo -e "                     1) Cyrus Pass (Mixed high-quality password)"
+	echo -e "                     2) Secure (Cryptographically secure random)"
+	echo -e "                     3) UUID (Universally Unique Identifier)"
+	echo -e "                     4) Base64 (Base64-encoded random data)"
+	echo -e "                     5) Strong (Alphanumeric + Special characters)"
+	echo -e "                     6) Basic (Alphanumeric)"
+	echo -e "                     7) Hexadecimal (0-9, a-f)"
+	echo -e "                     8) Custom (Your own characters)"
+	echo -e "  -l, --length     Desired password length (number)"
+	echo -e "  -c, --custom     Custom character set (required if type 8 is selected)"
+	echo -e "                   Example: $0 -t 8 -l 200 -c 'ABC123!@#'"
+	echo -e "  -h, --help       Show this help message and exit"
+}
+
+#############################
+# Check and install required packages
+#############################
+
+# Check for pv
+if ! command -v pv &>/dev/null; then
+	read -p "pv is required but not installed. Install it now? (Y/n): " ANSWER
+	if [[ $ANSWER =~ ^[Yy]$ ]] || [[ -z "$ANSWER" ]]; then
+		sudo apt update && sudo apt install -y pv
+	else
+		echo "Aborting. pv is required for this script."
+		exit 1
+	fi
+fi
+
+# Check for fzf (for interactive selection)
+if ! command -v fzf &>/dev/null; then
+	read -p "fzf is required for interactive selection but not installed. Install it now? (Y/n): " FZF_ANSWER
+	if [[ $FZF_ANSWER =~ ^[Yy]$ ]] || [[ -z "$FZF_ANSWER" ]]; then
+		sudo apt update && sudo apt install -y fzf
+	else
+		echo "Aborting. fzf is required for interactive selection."
+		exit 1
+	fi
+fi
+
+# Check for xclip (for clipboard support in GUI mode)
+if ! command -v xclip &>/dev/null; then
+	read -p "xclip is required for clipboard support but not installed. Install it now? (Y/n): " XCLIP_ANSWER
+	if [[ $XCLIP_ANSWER =~ ^[Yy]$ ]] || [[ -z "$XCLIP_ANSWER" ]]; then
+		sudo apt update && sudo apt install -y xclip
+	else
+		echo "Skipping clipboard support. xclip is required for copying passwords automatically."
+	fi
+fi
+
+#############################
+# Parse command-line flags (non-interactive mode)
+#############################
+
+TYPE=""
+LENGTH=""
+CUSTOM_CHARS=""
+
+while [[ $# -gt 0 ]]; do
+	key="$1"
+	case $key in
+	-t | --type)
+		TYPE="$2"
+		shift 2
+		;;
+	-l | --length)
+		LENGTH="$2"
+		shift 2
+		;;
+	-c | --custom)
+		CUSTOM_CHARS="$2"
+		shift 2
+		;;
+	-h | --help)
+		usage
+		exit 0
+		;;
+	*)
+		echo "Unknown option: $1"
+		usage
+		exit 1
+		;;
+	esac
+done
+
+#############################
+# Set theme colors based on terminal type
+#############################
+
+if [[ $TERM =~ "dark" ]]; then
+	# Dark terminal: Use Royal Blue and Dark Gold
+	START_COLOR="\e[34m"          # Royal Blue
+	END_COLOR="\e[38;5;220m"      # Dark Gold
+	TITLE_COLOR="\e[1;34m"        # Bold Royal Blue
+	OPTION_COLOR="\e[1;38;5;220m" # Bold Light Gold
+else
+	# Light terminal: Use Gold and White
+	START_COLOR="\e[33m"    # Gold
+	END_COLOR="\e[97m"      # White
+	TITLE_COLOR="\e[1;33m"  # Bold Dark Gold
+	OPTION_COLOR="\e[1;90m" # Dark Gray
+fi
+RESET_COLOR="\e[0m"
+
+#############################
+# Validate that if -c is provided, -t must be 8 (Custom)
+#############################
+
+if [ -n "$CUSTOM_CHARS" ] && [ "$TYPE" -ne 8 ]; then
+	echo -e "\e[1;31mError: The -c (custom character set) flag can only be used when -t (type) is set to 8 (Custom).\e[0m"
+	exit 1
+fi
+
+#############################
+# Print banner with pv effect
+#############################
+
+echo -e "$START_COLOR$(cat /usr/share/cyruspass/assets/banner.txt)$END_COLOR" | pv -qL 500
+
+#############################
+# Password Generation Functions
+#############################
+
+# Function to generate a basic alphanumeric password
+generate_basic_password() {
+	local LENGTH=$1
+	tr </dev/urandom -dc 'A-Za-z0-9' | head -c "$LENGTH"
+}
+
+# Function to generate a strong password (with special characters)
+generate_strong_password() {
+	local LENGTH=$1
+	tr </dev/urandom -dc 'A-Za-z0-9_@#$%^&*()-+=!<>?' | head -c "$LENGTH"
+}
+
+# Function to generate a hexadecimal password
+generate_hex_password() {
+	local LENGTH=$1
+	tr </dev/urandom -dc '0-9a-f' | head -c "$LENGTH"
+}
+
+# Function to prompt for custom characters and generate password
+generate_custom_password() {
+	local LENGTH=$1
+	# Use the provided CUSTOM_CHARS if available; else prompt the user
+	if [ -z "$CUSTOM_CHARS" ]; then
+		read -p "Enter the custom characters to use: " chars
+	else
+		chars="$CUSTOM_CHARS"
+	fi
+	if [ -z "$chars" ]; then
+		echo -e "\e[1;31mError: Custom character set cannot be empty.\e[0m"
+		exit 1
+	fi
+	tr </dev/urandom -dc "$chars" | head -c "$LENGTH"
+}
+
+# Function to generate a Base64-encoded password
+generate_base64_password() {
+	local LENGTH=$1
+	base64 </dev/urandom | head -c "$LENGTH"
+}
+
+# Function to generate a UUID-based password that supports lengths >32
+generate_uuid_password() {
+	local LENGTH=$1
+	local uuid_result=""
+	while [ ${#uuid_result} -lt "$LENGTH" ]; do
+		uuid_result+=$(uuidgen | tr -d '-')
+	done
+	echo "$uuid_result" | head -c "$LENGTH"
+}
+
+# Function to generate a cryptographically secure random password
+generate_secure_password() {
+	local LENGTH=$1
+	password=$(openssl rand -base64 "$LENGTH")
+	echo "$password" | head -c "$LENGTH"
+}
+
+# New Function: Generate a mixed, high-quality password called "Cyrus Pass"
+generate_cyrus_pass() {
+	local LENGTH=$1
+	seg1=$(generate_basic_password "$LENGTH")
+	seg2=$(generate_strong_password "$LENGTH")
+	seg3=$(generate_base64_password "$LENGTH")
+	seg4=$(generate_secure_password "$LENGTH")
+	seg5=$(generate_uuid_password "$LENGTH")
+	combined="${seg1}${seg2}${seg3}${seg4}${seg5}"
+	shuffled=$(echo "$combined" | grep -o . | shuf | tr -d "\n")
+	final=$(echo "$shuffled" | head -c "$LENGTH")
+	echo "$final"
+}
+
+#############################
+# If flags not provided, use interactive selection
+#############################
+
+if [ -z "$TYPE" ] || [ -z "$LENGTH" ]; then
+	# Interactive mode using fzf for password type selection
+	options=(
+		"1) Cyrus Pass (Mixed high-quality password)"
+		"2) Secure (Cryptographically secure random)"
+		"3) UUID (Universally Unique Identifier)"
+		"4) Base64 (Base64-encoded random data)"
+		"5) Strong (Alphanumeric + Special characters)"
+		"6) Basic (Alphanumeric)"
+		"7) Hexadecimal (0-9, a-f)"
+		"8) Custom (Your own characters)"
+	)
+	CHOICE=$(printf "%s\n" "${options[@]}" | fzf --prompt="Select password type > " --height=10 --border --reverse)
+	if [[ -z "$CHOICE" ]]; then
+		echo -e "\e[1;31mNo option selected. Exiting...\e[0m"
+		exit 1
+	fi
+	TYPE=$(echo "$CHOICE" | cut -d')' -f1)
+
+	read -p "Enter the desired password length: " LENGTH
+fi
+
+# Validate that LENGTH is a number
+if ! [[ "$LENGTH" =~ ^[0-9]+$ ]]; then
+	echo -e "\e[1;31mError: Invalid input. Please enter a valid number.\e[0m"
+	exit 1
+fi
+
+#############################
+# Generate Password Based on Selection
+#############################
+
+case $TYPE in
+1)
+	password=$(generate_cyrus_pass "$LENGTH")
+	;;
+2)
+	password=$(generate_secure_password "$LENGTH")
+	;;
+3)
+	password=$(generate_uuid_password "$LENGTH")
+	;;
+4)
+	password=$(generate_base64_password "$LENGTH")
+	;;
+5)
+	password=$(generate_strong_password "$LENGTH")
+	;;
+6)
+	password=$(generate_basic_password "$LENGTH")
+	;;
+7)
+	password=$(generate_hex_password "$LENGTH")
+	;;
+8)
+	password=$(generate_custom_password "$LENGTH")
+	;;
+*)
+	echo "Invalid option selected."
+	exit 1
+	;;
+esac
+
+# Check if the generated password meets the desired length
+if [ ${#password} -lt "$LENGTH" ]; then
+	echo -e "\e[1;31mError: Unable to generate enough characters. Try a different password type or a shorter length.\e[0m"
+	exit 1
+fi
+
+#############################
+# Display the Result with Colorized Output
+#############################
+
+echo -e "${TITLE_COLOR}Cyrus Pass🦁${RESET_COLOR}"
+echo -e "${OPTION_COLOR}Generated Password:${RESET_COLOR} ${TITLE_COLOR}${password}${RESET_COLOR}"
+
+#############################
+# GUI Mode Handling
+#############################
+
+if $GUI_MODE; then
+	# Copy password to clipboard
+	if command -v xclip &>/dev/null; then
+		echo -n "$password" | xclip -selection clipboard
+		echo -e "\n${OPTION_COLOR}Password copied to clipboard.${RESET_COLOR}"
+	fi
+
+	# Notif in GUI mode 
+	echo "$password" | xclip -selection clipboard
+	notify-send -i cyruspass "CyrusPass" "Password copied to clipboard!" -t 3000
+
+	# Keep terminal open
+	read -p "Press [Enter] to close..."
+fi

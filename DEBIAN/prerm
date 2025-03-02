@@ -1,0 +1,3 @@
+#!/bin/sh
+# Clean up
+rm -f /usr/bin/cyruspass

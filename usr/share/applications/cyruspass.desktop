@@ -1,0 +1,9 @@
+[Desktop Entry]
+Name=CyrusPass
+Comment=Secure Password Generator
+Exec=/usr/bin/cyruspass
+Icon=/usr/share/icons/hicolor/256x256/apps/cyruspass.png
+Terminal=true
+Type=Application
+Categories=Utility;Security;
+Keywords=password;security;generator;

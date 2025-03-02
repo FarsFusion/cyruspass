@@ -1,0 +1,12 @@
+Package: cyruspass
+Version: 0.0.1
+Section: utils
+Priority: optional
+Architecture: all
+Depends: bash, pv, fzf
+Recommends: libimage-exiftool-perl
+Maintainer: Pooulad poooooladi@gmail.com
+Description: Secure password generator inspired by Cyrus the Great
+  Generates military-grade passwords with multiple modes and
+  interactive selection features. Supports custom character sets
+  and adaptive terminal theming.
