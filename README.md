@@ -22,6 +22,8 @@
 
 Download package from [PPA](https://github.com/FarsFusion/ppa) repo of [FarsFusion](https://github.com/FarsFusion).
 
+![HomePage](/images/preview.png)
+
 **Basic Command**:
 
 ```shell
