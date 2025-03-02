@@ -20,7 +20,7 @@
 
 ## Quick start 👾
 
-Download package from PPA repo of FarsFusion
+Download package from [PPA](https://github.com/FarsFusion/ppa) repo of [FarsFusion](https://github.com/FarsFusion).
 
 **Basic Command**:
 
