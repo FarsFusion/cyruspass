@@ -33,29 +33,39 @@ usage() {
 # Check and install required packages
 #############################
 
-# List of required dependencies
-REQUIRED_PACKAGES=("pv" "fzf" "xclip")
+# Marker file to record that dependency check has already run
+DEP_FLAG="/var/lib/cyruspass/dep_checked"
 
-# Find missing dependencies
-MISSING_PACKAGES=()
-for pkg in "${REQUIRED_PACKAGES[@]}"; do
-	if ! command -v "$pkg" &>/dev/null; then
-		MISSING_PACKAGES+=("$pkg")
-	fi
-done
+# Only perform dependency check if marker file does not exist
+if [ ! -f "$DEP_FLAG" ]; then
 
-# If any packages are missing, prompt the user once
-if [ ${#MISSING_PACKAGES[@]} -ne 0 ]; then
-	echo "The following required packages are missing: ${MISSING_PACKAGES[*]}"
-	read -p "Do you want to install them now? (Y/n): " ANSWER
-	if [[ $ANSWER =~ ^[Yy]$ ]] || [[ -z "$ANSWER" ]]; then
-		sudo apt update && sudo apt install -y "${MISSING_PACKAGES[@]}"
-	else
-		echo "Aborting. The script requires these packages to function properly."
-		exit 1
-	fi
+    # List of required dependencies
+    REQUIRED_PACKAGES=("pv" "fzf" "xclip")
+
+    # Find missing dependencies using dpkg-query (more reliable than command -v)
+    MISSING_PACKAGES=()
+    for pkg in "${REQUIRED_PACKAGES[@]}"; do
+        if ! dpkg -s "$pkg" 2>/dev/null | grep -q "install ok installed"; then
+            MISSING_PACKAGES+=("$pkg")
+        fi
+    done
+
+    # If any packages are missing, prompt the user once
+    if [ ${#MISSING_PACKAGES[@]} -ne 0 ]; then
+        echo "The following required packages are missing: ${MISSING_PACKAGES[*]}"
+        read -p "Do you want to install them now? (Y/n): " ANSWER
+        if [[ $ANSWER =~ ^[Yy]$ ]] || [[ -z "$ANSWER" ]]; then
+            sudo apt update && sudo apt install -y "${MISSING_PACKAGES[@]}"
+        else
+            echo "Aborting. The script requires these packages to function properly."
+            exit 1
+        fi
+    fi
+
+    # Mark that dependency check has been completed
+    sudo mkdir -p "$(dirname "$DEP_FLAG")"
+    sudo touch "$DEP_FLAG"
 fi
-
 
 #############################
 # Parse command-line flags (non-interactive mode)
