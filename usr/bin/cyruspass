@@ -33,36 +33,38 @@ usage() {
 # Check and install required packages
 #############################
 
-# Check for pv
-if ! command -v pv &>/dev/null; then
-	read -p "pv is required but not installed. Install it now? (Y/n): " ANSWER
-	if [[ $ANSWER =~ ^[Yy]$ ]] || [[ -z "$ANSWER" ]]; then
-		sudo apt update && sudo apt install -y pv
-	else
-		echo "Aborting. pv is required for this script."
-		exit 1
-	fi
-fi
+# Marker file to record that dependency check has already run
+DEP_FLAG="/var/lib/cyruspass/dep_checked"
 
-# Check for fzf (for interactive selection)
-if ! command -v fzf &>/dev/null; then
-	read -p "fzf is required for interactive selection but not installed. Install it now? (Y/n): " FZF_ANSWER
-	if [[ $FZF_ANSWER =~ ^[Yy]$ ]] || [[ -z "$FZF_ANSWER" ]]; then
-		sudo apt update && sudo apt install -y fzf
-	else
-		echo "Aborting. fzf is required for interactive selection."
-		exit 1
-	fi
-fi
+# Only perform dependency check if marker file does not exist
+if [ ! -f "$DEP_FLAG" ]; then
 
-# Check for xclip (for clipboard support in GUI mode)
-if ! command -v xclip &>/dev/null; then
-	read -p "xclip is required for clipboard support but not installed. Install it now? (Y/n): " XCLIP_ANSWER
-	if [[ $XCLIP_ANSWER =~ ^[Yy]$ ]] || [[ -z "$XCLIP_ANSWER" ]]; then
-		sudo apt update && sudo apt install -y xclip
-	else
-		echo "Skipping clipboard support. xclip is required for copying passwords automatically."
-	fi
+    # List of required dependencies
+    REQUIRED_PACKAGES=("pv" "fzf" "xclip")
+
+    # Find missing dependencies using dpkg-query (more reliable than command -v)
+    MISSING_PACKAGES=()
+    for pkg in "${REQUIRED_PACKAGES[@]}"; do
+        if ! dpkg -s "$pkg" 2>/dev/null | grep -q "install ok installed"; then
+            MISSING_PACKAGES+=("$pkg")
+        fi
+    done
+
+    # If any packages are missing, prompt the user once
+    if [ ${#MISSING_PACKAGES[@]} -ne 0 ]; then
+        echo "The following required packages are missing: ${MISSING_PACKAGES[*]}"
+        read -p "Do you want to install them now? (Y/n): " ANSWER
+        if [[ $ANSWER =~ ^[Yy]$ ]] || [[ -z "$ANSWER" ]]; then
+            sudo apt update && sudo apt install -y "${MISSING_PACKAGES[@]}"
+        else
+            echo "Aborting. The script requires these packages to function properly."
+            exit 1
+        fi
+    fi
+
+    # Mark that dependency check has been completed
+    sudo mkdir -p "$(dirname "$DEP_FLAG")"
+    sudo touch "$DEP_FLAG"
 fi
 
 #############################
